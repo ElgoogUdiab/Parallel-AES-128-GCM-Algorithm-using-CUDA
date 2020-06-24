@@ -7,6 +7,7 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #define BYTE unsigned char
 
 using namespace std;
@@ -818,6 +819,7 @@ __global__ void AES_Decrypt(aes_block aes_block_array[], BYTE key[], int keyLen,
 
 // ===================== test ============================================
 int main(int argc, char* argv[]) {
+    /*
     // File read (message)
     ifstream ifs;
     ifs.open(argv[1], std::ifstream::binary);
@@ -851,10 +853,6 @@ int main(int argc, char* argv[]) {
     cout << keyLen << endl;
     switch (keyLen) {
         case 16:
-            break;
-        case 24:
-            break;
-        case 32:
             break;
         default:
             cerr << "ERROR : keyLen should be 128, 192, 256bits\n";
@@ -956,4 +954,124 @@ int main(int argc, char* argv[]) {
     fclose(de_fp);
 
     return 0;
+    */
+
+    // aes.exe <-e/d> <input> <key> <IV> <auth> <output>
+    if (argv[1][0] != '-' || (argv[1][1] != 'e' && argv[1][1] != 'd')) {
+        cerr << "Specify encrypt or decrypt first using -e or -d!" << endl;
+        return 1;
+    }
+    if (argc != 7) {
+        cerr << "Arg count wrong!" << endl;
+        cerr << "Usage: aes.exe <-e|-d> <input_file> <key> <IV> <auth> <tag> <output>" << endl;
+        return 1;
+    }
+    // File input read
+    ifstream input_file(argv[2], std::ifstream::in);
+    if (!input_file.is_open()) {
+        cerr << "Cannot open the input file" << endl;
+        return 1;
+    }
+    // File length
+    input_file.seekg(0, ios::end);
+    int input_length = input_file.tellg();
+    input_file.seekg(0, ios::beg);
+    clog << "Input file length: " << input_length << endl;
+    int input_block_number = input_length / 16,
+        input_zero_padding_bytes = input_length % 16;
+    aes_block* aes_block_array;
+    if (input_zero_padding_bytes != 0)
+        aes_block_array = new aes_block[1 + input_block_number + 1 + 1];
+    else
+        aes_block_array = new aes_block[1 + input_block_number + 1];
+
+    // Auth read
+    ifstream auth_file(argv[5], std::ifstream::in);
+    if (!auth_file.is_open()) {
+        cerr << "Cannot open the auth file" << endl;
+        return 1;
+    }
+    // Auth length
+    auth_file.seekg(0, ios::end);
+    int auth_length = auth_file.tellg();
+    input_file.seekg(0, ios::beg);
+    clog << "Auth file length: " << auth_length << endl;
+    int auth_block_number = auth_length / 16,
+        auth_zero_padding_bytes = auth_length % 16;
+    
+    // Key read
+    ifstream key_file(argv[3], std::ifstream::in);
+    if (!key_file.is_open()) {
+        cerr << "Cannot open the key file" << endl;
+        return 1;
+    }
+    BYTE key[16 * (10 + 1)];
+    for (int i = 0; i < 16 && key_file.peek() != EOF; i++) {
+        char temp[3];
+        int temp_int;
+        key_file.get(temp, 3);
+        std::stringstream temp_stream;
+        temp_stream << temp;
+        temp_stream >> std::hex >> temp_int;
+        key[i] = temp_int;
+    }
+    if (key_file.tellg() > 32) {
+        clog << "Key file gives a key too long. Remaining parts omitted." << endl;
+    } else if (key_file.tellg() < 32) {
+        cerr << "Key file too short!" << endl;
+        return 1;
+    }
+    int expandKeyLen = AES_ExpandKey(key, 16);
+    // IV read
+    ifstream iv_file(argv[4], std::ifstream::in);
+    if (!iv_file.is_open()) { 
+        cerr << "Cannot open the IV file" << endl;
+        return 1;
+    }
+    BYTE IV[16];
+    for (int i = 0; i < 12 && key_file.peek() != EOF; i++) {
+        int temp_int;
+        char temp[3];
+        iv_file.get(temp, 3);
+        std::stringstream temp_stream;
+        temp_stream << temp;
+        temp_stream >> std::hex >> temp_int;
+        IV[i] = temp_int;
+    }
+    if (iv_file.tellg() > 24) {
+        clog << "IV file gives an IV too long. Remaining parts omitted." << endl;
+    } else if (iv_file.tellg() < 24) {
+        cerr << "IV file too long!" << endl;
+        return 1;
+    }
+    IV[12] = IV[13] = IV[14] = 0; IV[15] = 1;
+
+    // TODO:
+    // GCM init (Compute H, multiplication table)
+
+    // Generate counter blocks.
+
+    // Encrypt counter blocks.
+    
+    // Encrypted counter blocks XOR message blocks.
+
+    // Compute GHASH
+
+    // Prepare for the output file
+    ofstream output_file(argv[7], std::ofstream::trunc);
+    if (argv[2][1] == 'e') {
+        // Encrypt branch
+        // Output XORed blocks to output
+
+        // Output tag to tag file
+
+    } else {
+        // Decrypt branch
+        // Read tag file & compare tag file with computed tag
+
+        // If same, output decrypted result
+
+        // Otherwise, return FAILED.
+        
+    }
 }
